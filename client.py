@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+"""CLIENT: antarmuka baris perintah untuk master.
+
+  python client.py workers
+  python client.py sinkron --awal 1 --akhir 10000000
+  python client.py async   --awal 1 --akhir 10000000      # KirimJob + StreamProgress
+  python client.py status  <job_id>
+"""
 import argparse
 import sys
 
