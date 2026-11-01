@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+venv/
+primes_pb2.py
+primes_pb2_grpc.py
+*.log
+*.pid
+hasil_*.csv
+*.png
