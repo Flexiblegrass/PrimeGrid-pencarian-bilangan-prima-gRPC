@@ -1,0 +1,23 @@
+# 1 master + 3 worker = 4 container terpisah (syarat demo minimal 2 container/komputer)
+# Jalankan:  docker compose up --build
+# Client  :  docker compose exec master python client.py sinkron
+services:
+  master:
+    build: .
+    command: python master.py --port 50050
+    ports: ["50050:50050"]
+
+  worker1:
+    build: .
+    command: python worker.py --id worker1 --port 50061 --alamat worker1:50061 --master master:50050
+    depends_on: [master]
+
+  worker2:
+    build: .
+    command: python worker.py --id worker2 --port 50062 --alamat worker2:50062 --master master:50050
+    depends_on: [master]
+
+  worker3:
+    build: .
+    command: python worker.py --id worker3 --port 50063 --alamat worker3:50063 --master master:50050
+    depends_on: [master]
