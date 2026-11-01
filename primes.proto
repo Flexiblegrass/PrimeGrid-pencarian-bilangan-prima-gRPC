@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+package primes;
+
+// =====================================================================
+//  Proyek: Komputasi Terdistribusi Master-Worker (Bilangan Prima 1..N)
+//  Dua layanan dalam satu kontrak:
+//    - Worker : dipanggil MASTER untuk menghitung satu segmen rentang
+//    - Master : dipanggil CLIENT untuk mengirim/memantau pekerjaan
+//  Total 7 RPC (syarat minimal 4), 1 server streaming (StreamProgress).
+// =====================================================================
+
+// ---------------------------- Layanan Worker -------------------------
+service Worker {
+  // Unary. Cek kesehatan worker (dipakai heartbeat master).
+  rpc Ping (Kosong) returns (PingResponse);
+
+  // Unary. Hitung jumlah prima pada satu segmen [awal, akhir].
+  // Dilindungi request_id: permintaan ulang tidak dihitung dua kali.
+  rpc HitungSegmen (SegmenRequest) returns (SegmenResponse);
+}
+
+// ---------------------------- Layanan Master -------------------------
+service Master {
+  // Unary. Worker mendaftar (binding dinamis). Idempoten, boleh diulang.
+  rpc DaftarWorker (WorkerInfo) returns (StatusResponse);
+
+  // Unary. Daftar worker beserta status hidup/mati.
+  rpc ListWorker (Kosong) returns (WorkerList);
+
+  // Unary, ASINKRON. Mengirim pekerjaan lalu langsung mengembalikan job_id.
+  // TIDAK idempoten -> wajib membawa request_id (deduplikasi di master).
+  rpc KirimJob (JobRequest) returns (JobAck);
+
+  // Unary. Polling status & hasil sementara sebuah pekerjaan.
+  rpc StatusJob (JobId) returns (JobStatus);
+
+  // Server streaming. Master mengirim progres tiap kali ada chunk selesai.
+  rpc StreamProgress (JobId) returns (stream JobProgress);
+
+  // Unary, SINKRON. Kirim pekerjaan lalu tunggu sampai selesai.
+  rpc HitungSinkron (JobRequest) returns (JobHasil);
+}
+
+// ------------------------------ Message ------------------------------
+message Kosong {}
+
+enum JobState {
+  JOB_TIDAK_DIKETAHUI = 0;
+  JOB_ANTRI = 1;
+  JOB_BERJALAN = 2;
+  JOB_SELESAI = 3;
+  JOB_GAGAL = 4;
+}
+
+// ---- Worker ----
+message PingResponse {
+  string worker_id = 1;
+  int32  jumlah_cpu = 2;
+  int32  beban_aktif = 3;      // jumlah segmen yang sedang dihitung
+}
+
+message SegmenRequest {
+  string request_id = 1;       // unik per segmen: "<job_id>:<indeks_chunk>"
+  int64  awal = 2;             // inklusif
+  int64  akhir = 3;            // inklusif
+  string algoritma = 4;        // "trial" | "sieve"
+}
+
+message SegmenResponse {
+  string request_id = 1;
+  int64  jumlah_prima = 2;
+  int64  prima_terbesar = 3;
+  double waktu_komputasi_ms = 4;
+  string worker_id = 5;
+  bool   dari_cache = 6;       // true bila ini balasan duplikat (tidak dihitung ulang)
+}
+
+// ---- Master: registrasi ----
+message WorkerInfo {
+  string worker_id = 1;
+  string alamat = 2;           // host:port yang dapat dijangkau master
+}
+
+message WorkerStatus {
+  string worker_id = 1;
+  string alamat = 2;
+  bool   hidup = 3;
+  int64  chunk_selesai = 4;
+}
+
+message WorkerList {
+  repeated WorkerStatus worker = 1;
+}
+
+message StatusResponse {
+  bool   sukses = 1;
+  string pesan = 2;
+}
+
+// ---- Master: pekerjaan ----
+message JobRequest {
+  string request_id = 1;       // WAJIB, dibuat client (UUID); sama untuk setiap retry
+  int64  awal = 2;
+  int64  akhir = 3;
+  int32  jumlah_chunk = 4;     // 0 = otomatis
+  string algoritma = 5;        // kosong = "trial"
+  int32  maks_worker = 6;      // 0 = pakai semua worker hidup (untuk uji speedup)
+}
+
+message JobAck {
+  string job_id = 1;
+  bool   duplikat = 2;         // true bila request_id sudah pernah diterima
+}
+
+message JobId {
+  string job_id = 1;
+}
+
+message JobStatus {
+  string   job_id = 1;
+  JobState state = 2;
+  int32    chunk_total = 3;
+  int32    chunk_selesai = 4;
+  int64    jumlah_prima_sementara = 5;
+  string   pesan = 6;
+}
+
+message JobProgress {
+  string   job_id = 1;
+  JobState state = 2;
+  int32    chunk_total = 3;
+  int32    chunk_selesai = 4;
+  int64    jumlah_prima_sementara = 5;
+  double   persen = 6;
+}
+
+message JobHasil {
+  string   job_id = 1;
+  JobState state = 2;
+  int64    jumlah_prima = 3;
+  int64    prima_terbesar = 4;
+  double   waktu_total_ms = 5;
+  int32    jumlah_chunk = 6;
+  map<string, int32> chunk_per_worker = 7;
+  string   pesan = 8;
+  bool     duplikat = 9;
+}
