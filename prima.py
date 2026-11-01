@@ -8,7 +8,6 @@ Dua algoritma disediakan:
 """
 import math
 
-
 def adalah_prima(n: int) -> bool:
     if n < 2:
         return False
